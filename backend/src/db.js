@@ -1,53 +1,24 @@
-const sqlite3 = require('sqlite3').verbose();
-const { promisify } = require('util');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
+const path = require('path');
 
-const db = new sqlite3.Database('./database.db', (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-  } else {
-    console.log('Connected to SQLite database.');
-  }
-});
+const dbPath = path.join(__dirname, '../database.db');
 
-// Promisify database methods for async/await
-db.runAsync = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve({ lastID: this.lastID, changes: this.changes });
-      }
-    });
-  });
-};
-
-db.getAsync = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(row);
-      }
-    });
-  });
-};
-
-db.allAsync = (sql, params = []) => {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(rows);
-      }
-    });
-  });
-};
+let db;
 
 async function initializeDb() {
-  await db.runAsync(`
+  const SQL = await initSqlJs();
+  
+  // Load existing database if it exists
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    db = new SQL.Database();
+  }
+
+  // Create tables
+  db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -57,7 +28,7 @@ async function initializeDb() {
     )
   `);
 
-  await db.runAsync(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -68,7 +39,7 @@ async function initializeDb() {
     )
   `);
 
-  await db.runAsync(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL,
@@ -82,6 +53,75 @@ async function initializeDb() {
       FOREIGN KEY (assignee_id) REFERENCES users(id)
     )
   `);
+
+  // Save database to file
+  const data = db.export();
+  fs.writeFileSync(dbPath, Buffer.from(data));
+  
+  console.log('Database initialized successfully');
 }
 
-module.exports = { db, initializeDb };
+// Helper methods with async-style API for backward compatibility
+function runAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    try {
+      db.run(sql, params);
+      const data = db.export();
+      fs.writeFileSync(dbPath, Buffer.from(data));
+      const lastIdResult = db.exec("SELECT last_insert_rowid() as id");
+      const lastID = lastIdResult[0]?.values[0]?.[0] || 0;
+      resolve({ lastID, changes: db.getRowsModified() });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function getAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    try {
+      const stmt = db.prepare(sql);
+      stmt.bind(params);
+      if (stmt.step()) {
+        const row = stmt.getAsObject();
+        stmt.free();
+        resolve(row);
+      } else {
+        stmt.free();
+        resolve(null);
+      }
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function allAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    try {
+      const stmt = db.prepare(sql);
+      stmt.bind(params);
+      const results = [];
+      while (stmt.step()) {
+        results.push(stmt.getAsObject());
+      }
+      stmt.free();
+      resolve(results);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+// Export both styles for compatibility
+module.exports = { 
+  db: { 
+    runAsync, 
+    getAsync, 
+    allAsync,
+    run: runAsync,
+    get: getAsync,
+    all: allAsync
+  },
+  initializeDb 
+};
