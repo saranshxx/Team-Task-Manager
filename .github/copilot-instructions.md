@@ -1,3 +1,0 @@
-- Scaffold a full-stack React + Express + PostgreSQL app for a team task manager.
-- Provide a working setup with backend and frontend packages.
-- Ensure README includes install and run instructions.
