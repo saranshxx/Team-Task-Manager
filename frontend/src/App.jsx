@@ -13,7 +13,7 @@ function App() {
   const [tasksList, setTasksList] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [projectForm, setProjectForm] = useState({ name: '', description: '' });
-  const [taskForm, setTaskForm] = useState({ project_id: '', title: '', description: '', assignee_id: '', due_date: '', status: 'todo' });
+  const [taskForm, setTaskForm] = useState({ project_id: '', title: '', description: '', assignee_id: '', due_date: '' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -153,8 +153,27 @@ function App() {
     setLoading(true);
     try {
       await tasks.create(taskForm, token);
-      setTaskForm({ project_id: '', title: '', description: '', assignee_id: '', due_date: '', status: 'todo' });
+      setTaskForm({ project_id: '', title: '', description: '', assignee_id: '', due_date: '' });
       loadTasks();
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateTaskStatus = async (task, status) => {
+    setLoading(true);
+    try {
+      await tasks.update(task.id, {
+        title: task.title,
+        description: task.description,
+        assignee_id: task.assignee_id || '',
+        due_date: task.due_date || '',
+        status,
+      }, token);
+      await loadTasks();
       setError('');
     } catch (err) {
       setError(err.message);
@@ -508,20 +527,6 @@ function App() {
                         onChange={(e) => handleChange(e, setTaskForm)}
                       />
                     </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Status</label>
-                      <select
-                        name="status"
-                        className="form-select"
-                        value={taskForm.status}
-                        onChange={(e) => handleChange(e, setTaskForm)}
-                      >
-                        <option value="todo">To Do</option>
-                        <option value="in-progress">In Progress</option>
-                        <option value="done">Done</option>
-                      </select>
-                    </div>
                   </div>
 
                   <div className="form-actions">
@@ -548,10 +553,24 @@ function App() {
                             {task.assignee_name ? `👤 ${task.assignee_name}` : '🤷 Unassigned'}
                           </span>
                         </div>
-                        <span className={`status-badge ${getStatusBadgeClass(task.status, isOverdue)}`}>
-                          <span className="status-indicator"></span>
-                          {isOverdue ? 'Overdue' : task.status.replace('-', ' ')}
-                        </span>
+                        <div className="task-status-control">
+                          <span className={`status-badge ${getStatusBadgeClass(task.status, isOverdue)}`}>
+                            <span className="status-indicator"></span>
+                            {isOverdue ? 'Overdue' : task.status.replace('-', ' ')}
+                          </span>
+                          <label className="sr-only" htmlFor={`status-${task.id}`}>Task status</label>
+                          <select
+                            id={`status-${task.id}`}
+                            className="status-select"
+                            value={task.status}
+                            onChange={(event) => updateTaskStatus(task, event.target.value)}
+                            disabled={loading}
+                          >
+                            <option value="todo">To do</option>
+                            <option value="in-progress">In progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                        </div>
                       </div>
 
                       {task.due_date && (

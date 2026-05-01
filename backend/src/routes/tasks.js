@@ -6,7 +6,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post('/', async (req, res) => {
-  const { project_id, title, description, assignee_id, due_date, status } = req.body;
+  const { project_id, title, description, assignee_id, due_date } = req.body;
   if (!project_id || !title) return res.status(400).json({ message: 'Project and title are required' });
 
   const project = await db.getAsync('SELECT owner_id FROM projects WHERE id = ?', [project_id]);
@@ -15,9 +15,10 @@ router.post('/', async (req, res) => {
     return res.status(403).json({ message: 'You are not authorized to add tasks to this project' });
   }
 
+  // New tasks are created with default status 'todo'
   const result = await db.runAsync(
-    'INSERT INTO tasks (project_id, title, description, assignee_id, due_date, status) VALUES (?, ?, ?, ?, ?, ?)',
-    [project_id, title, description || '', assignee_id || null, due_date || null, status || 'todo']
+    'INSERT INTO tasks (project_id, title, description, assignee_id, due_date) VALUES (?, ?, ?, ?, ?)',
+    [project_id, title, description || '', assignee_id || null, due_date || null]
   );
   const task = await db.getAsync('SELECT * FROM tasks WHERE id = ?', [result.lastID]);
   res.json(task);

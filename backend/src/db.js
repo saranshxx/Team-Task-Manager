@@ -57,9 +57,23 @@ async function initializeDb() {
   }
 }
 
+// Convert SQLite ? placeholders to PostgreSQL $n format
+function convertPlaceholders(sql) {
+  let paramIndex = 1;
+  const converted = sql.replace(/\?/g, () => `$${paramIndex++}`);
+  return converted;
+}
+
 // Helper methods for database operations
 async function runAsync(sql, params = []) {
-  const result = await pool.query(sql, params);
+  let convertedSql = convertPlaceholders(sql);
+
+  // For INSERT statements, use RETURNING id to get the last inserted ID
+  if (/^\s*INSERT\s+INTO/i.test(convertedSql) && !/RETURNING/i.test(convertedSql)) {
+    convertedSql += ' RETURNING id';
+  }
+
+  const result = await pool.query(convertedSql, params);
   return { 
     lastID: result.rows[0]?.id || 0, 
     changes: result.rowCount 
@@ -67,12 +81,14 @@ async function runAsync(sql, params = []) {
 }
 
 async function getAsync(sql, params = []) {
-  const result = await pool.query(sql, params);
+  const convertedSql = convertPlaceholders(sql);
+  const result = await pool.query(convertedSql, params);
   return result.rows[0] || null;
 }
 
 async function allAsync(sql, params = []) {
-  const result = await pool.query(sql, params);
+  const convertedSql = convertPlaceholders(sql);
+  const result = await pool.query(convertedSql, params);
   return result.rows;
 }
 
